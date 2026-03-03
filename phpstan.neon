@@ -1,0 +1,19 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+
+    paths:
+        - app/
+
+    # Level 5 requested by user
+    level: 5
+
+    ignoreErrors:
+        # Ignore random errors if needed later
+
+    excludePaths:
+        - app/Http/Controllers/Auth/*
+        - app/Http/Requests/Auth/*
+        - app/Http/Controllers/ProfileController.php
+        - app/Http/Requests/ProfileUpdateRequest.php

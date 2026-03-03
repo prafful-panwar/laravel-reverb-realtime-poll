@@ -1,0 +1,8 @@
+{
+    "exclude": [
+        "app/Http/Controllers/Auth",
+        "app/Http/Controllers/ProfileController.php",
+        "app/Http/Requests/Auth",
+        "app/Http/Requests/ProfileUpdateRequest.php"
+    ]
+}

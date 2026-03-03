@@ -1,0 +1,43 @@
+<?php
+
+namespace App\Http\Requests;
+
+use App\DTOs\SubmitVoteDTO;
+use App\Models\Poll;
+use App\Models\PollOption;
+use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Foundation\Http\FormRequest;
+
+class StoreVoteRequest extends FormRequest
+{
+    /**
+     * Determine if the user is authorized to make this request.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, ValidationRule|array<mixed>|string>
+     */
+    public function rules(): array
+    {
+        return [
+            'option_id' => ['required', 'integer', 'exists:poll_options,id'],
+        ];
+    }
+
+    public function toDTO(Poll $poll, PollOption $option): SubmitVoteDTO
+    {
+        return new SubmitVoteDTO(
+            poll: $poll,
+            option: $option,
+            userId: auth()->id(),
+            ipAddress: $this->ip(),
+            userAgent: $this->userAgent()
+        );
+    }
+}
