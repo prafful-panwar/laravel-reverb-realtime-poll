@@ -224,5 +224,51 @@ chmod +x aws-deploy.sh
 
 ### 3️⃣ Architecture Overview
 
-- `Browser → Nginx → PHP-FPM → Laravel`
-- `Redis (Queue) → Supervisor Worker → Reverb → WebSocket → Browser`
+### 🗄️ Entity Relationship Diagram
+
+![Database Structure](public/images/db-structure.png)
+
+### 🧱 Application Request Flow
+
+```
+Browser
+   ↓
+Nginx
+   ↓
+PHP-FPM
+   ↓
+Laravel Application
+```
+
+---
+
+### ⚡ Real-Time Broadcasting Flow
+
+```
+User Submits Vote
+        ↓
+Laravel Controller
+        ↓
+Dispatch Event
+        ↓
+Redis Queue
+        ↓
+Supervisor Queue Worker
+        ↓
+Laravel Broadcasting
+        ↓
+Reverb (WebSocket Server)
+        ↓
+Connected Browsers (Live Update)
+```
+
+---
+
+### 🗂 Infrastructure Components
+
+- **Nginx** – Reverse proxy & web server
+- **PHP-FPM** – PHP process manager
+- **Laravel** – Application & business logic
+- **Redis** – Queue driver
+- **Supervisor** – Manages queue workers
+- **Laravel Reverb** – WebSocket server for real-time updates
