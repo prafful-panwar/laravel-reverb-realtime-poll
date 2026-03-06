@@ -55,25 +55,26 @@ class PollRepository implements PollRepositoryInterface
     public function incrementCachedOptionVoteCount(Poll $poll, PollOption $option, int $delta = 1): void
     {
         $cacheKey = "poll_{$poll->slug}";
+        $lockKey = "poll_cache_lock:{$poll->slug}";
 
-        if (! Cache::has($cacheKey)) {
-            return;
-        }
+        Cache::lock($lockKey, 2)->block(1, function () use ($cacheKey, $option, $delta): void {
+            /** @var Poll|null $cachedPoll */
+            $cachedPoll = Cache::get($cacheKey);
 
-        /** @var Poll|null $cachedPoll */
-        $cachedPoll = Cache::get($cacheKey);
+            if (! $cachedPoll instanceof Poll) {
+                return;
+            }
 
-        if (! $cachedPoll instanceof Poll) {
-            return;
-        }
+            $cachedOption = $cachedPoll->options->firstWhere('id', $option->id);
 
-        $cachedOption = $cachedPoll->options->firstWhere('id', $option->id);
+            if (! $cachedOption) {
+                return;
+            }
 
-        if ($cachedOption) {
             $cachedOption->votes_count = ($cachedOption->votes_count ?? 0) + $delta;
-        }
 
-        Cache::put($cacheKey, $cachedPoll, now()->addSeconds(30));
+            Cache::put($cacheKey, $cachedPoll, now()->addSeconds(30));
+        });
     }
 
     public function findOption(Poll $poll, int $optionId): PollOption

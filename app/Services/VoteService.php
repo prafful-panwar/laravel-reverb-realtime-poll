@@ -40,7 +40,7 @@ class VoteService
                     ]);
                 }
 
-                return DB::transaction(function () use ($dto): Vote {
+                $vote = DB::transaction(function () use ($dto): Vote {
                     $vote = $this->voteRepository->create([
                         'poll_id' => $dto->poll->id,
                         'poll_option_id' => $dto->option->id,
@@ -52,18 +52,23 @@ class VoteService
                     $dto->option->increment('votes_count');
                     $dto->option->refresh();
 
-                    $this->pollRepository->incrementCachedOptionVoteCount($dto->poll, $dto->option, 1);
+                    // Only update cache and dispatch events once the transaction commits.
+                    DB::afterCommit(function () use ($dto): void {
+                        $this->pollRepository->incrementCachedOptionVoteCount($dto->poll, $dto->option, 1);
 
-                    // Fire event with the accurate post-increment votes_count
-                    event(new VoteSubmitted(
-                        pollId: $dto->poll->id,
-                        pollOwnerId: $dto->poll->user_id,
-                        optionId: $dto->option->id,
-                        votesCount: $dto->option->votes_count,
-                    ));
+                        // Fire event with the accurate post-increment votes_count
+                        event(new VoteSubmitted(
+                            pollId: $dto->poll->id,
+                            pollOwnerId: $dto->poll->user_id,
+                            optionId: $dto->option->id,
+                            votesCount: $dto->option->votes_count,
+                        ));
+                    });
 
                     return $vote;
                 });
+
+                return $vote;
             });
         } catch (LockTimeoutException $e) {
             // Lock could not be acquired, likely due to high contention. Tell the user to retry.
