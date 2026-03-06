@@ -3,83 +3,90 @@
 namespace App\Services;
 
 use App\DTOs\SubmitVoteDTO;
-use App\Models\Poll;
+use App\Events\VoteSubmitted;
 use App\Models\Vote;
+use App\Repositories\Contracts\PollRepositoryInterface;
+use App\Repositories\Contracts\VoteRepositoryInterface;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class VoteService
 {
+    public function __construct(
+        protected VoteRepositoryInterface $voteRepository,
+        protected PollRepositoryInterface $pollRepository
+    ) {}
+
     /**
      * Submit a vote for a poll option.
      */
     public function submitVote(SubmitVoteDTO $dto): Vote
     {
-        return DB::transaction(function () use ($dto): Vote {
-            $hasVoted = false;
+        $lockKey = $this->getVoteLockKey($dto);
 
-            if ($dto->userId) {
-                // Authenticated: check by user_id
-                $hasVoted = $this->hasAuthenticatedUserVoted($dto);
-            } else {
-                // Guest: check by IP address (cookie is checked in the controller)
-                $hasVoted = $this->hasGuestVotedByIp($dto);
-            }
+        try {
+            return Cache::lock($lockKey, 5)->block(3, function () use ($dto): Vote {
+                // Fail fast if the user/guest already voted.
+                $hasVoted = $dto->userId
+                    ? $this->voteRepository->hasUserVoted($dto->poll->id, $dto->userId)
+                    : $this->voteRepository->hasGuestVotedByIp($dto->poll->id, $dto->ipAddress);
 
-            if ($hasVoted) {
-                throw ValidationException::withMessages([
-                    'vote' => 'You have already voted on this poll.',
-                ]);
-            }
+                if ($hasVoted) {
+                    throw ValidationException::withMessages([
+                        'vote' => 'You have already voted on this poll.',
+                    ]);
+                }
 
-            $vote = $this->createVote($dto);
+                $vote = DB::transaction(function () use ($dto): Vote {
+                    $vote = $this->voteRepository->create([
+                        'poll_id' => $dto->poll->id,
+                        'poll_option_id' => $dto->option->id,
+                        'user_id' => $dto->userId,
+                        'ip_address' => $dto->ipAddress,
+                        'user_agent' => $dto->userAgent,
+                    ]);
 
-            // Increment vote count atomically
-            $dto->option->increment('votes_count');
+                    $dto->option->increment('votes_count');
+                    $dto->option->refresh();
 
-            return $vote;
-        });
+                    // Only update cache and dispatch events once the transaction commits.
+                    DB::afterCommit(function () use ($dto): void {
+                        $this->pollRepository->incrementCachedOptionVoteCount($dto->poll, $dto->option, 1);
+
+                        // Fire event with the accurate post-increment votes_count
+                        event(new VoteSubmitted(
+                            pollId: $dto->poll->id,
+                            pollOwnerId: $dto->poll->user_id,
+                            optionId: $dto->option->id,
+                            votesCount: $dto->option->votes_count,
+                        ));
+                    });
+
+                    return $vote;
+                });
+
+                return $vote;
+            });
+        } catch (LockTimeoutException $e) {
+            // Lock could not be acquired, likely due to high contention. Tell the user to retry.
+            throw ValidationException::withMessages([
+                'vote' => 'Your vote is being processed. Please try again in a moment.',
+            ]);
+        } catch (UniqueConstraintViolationException $e) {
+            // Second check: Database-level concurrency guard (race condition caught)
+            throw ValidationException::withMessages([
+                'vote' => 'You have already voted on this poll.',
+            ]);
+        }
     }
 
-    /**
-     * Check if an authenticated user has already voted on this poll.
-     */
-    private function hasAuthenticatedUserVoted(SubmitVoteDTO $dto): bool
+    private function getVoteLockKey(SubmitVoteDTO $dto): string
     {
-        return Vote::query()
-            ->where('poll_id', $dto->poll->id)
-            ->where('user_id', $dto->userId)
-            ->lockForUpdate()
-            ->exists();
-    }
+        $voterId = $dto->userId ?? $dto->ipAddress;
 
-    /**
-     * Check if a guest has already voted on this poll from the same IP address.
-     */
-    private function hasGuestVotedByIp(SubmitVoteDTO $dto): bool
-    {
-        return Vote::query()
-            ->where('poll_id', $dto->poll->id)
-            ->whereNull('user_id')
-            ->where('ip_address', $dto->ipAddress)
-            ->lockForUpdate()
-            ->exists();
-    }
-
-    /**
-     * Create the vote record in the database.
-     */
-    private function createVote(SubmitVoteDTO $dto): Vote
-    {
-        /** @var Vote $vote */
-        $vote = Vote::query()->create([
-            'poll_id' => $dto->poll->id,
-            'poll_option_id' => $dto->option->id,
-            'user_id' => $dto->userId,
-            'ip_address' => $dto->ipAddress,
-            'user_agent' => $dto->userAgent,
-        ]);
-
-        return $vote;
+        return sprintf('vote_submission:%d:%s', $dto->poll->id, $voterId);
     }
 }

@@ -25,9 +25,7 @@ class StoreVoteRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
-            'option_id' => ['required', 'integer', 'exists:poll_options,id'],
-        ];
+        return [];
     }
 
     public function toDTO(Poll $poll, PollOption $option): SubmitVoteDTO
