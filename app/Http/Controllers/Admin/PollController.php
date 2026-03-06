@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StorePollRequest;
-use App\Models\Poll;
+use App\Repositories\Contracts\PollRepositoryInterface;
 use App\Services\PollService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -12,15 +12,14 @@ use Inertia\Response;
 
 class PollController extends Controller
 {
-    public function __construct(protected PollService $pollService) {}
+    public function __construct(
+        protected PollService $pollService,
+        protected PollRepositoryInterface $pollRepository
+    ) {}
 
     public function index(): Response
     {
-        $polls = Poll::query()->where('user_id', auth()->id())
-            ->withCount('options')
-            ->withSum('options', 'votes_count')
-            ->latest()
-            ->cursorPaginate(10);
+        $polls = $this->pollRepository->getPaginatedPollsForUser(auth()->id(), 10);
 
         return Inertia::render('Admin/Polls/Index', [
             'polls' => $polls,

@@ -17,18 +17,6 @@ class StorePollRequest extends FormRequest
     }
 
     /**
-     * Trim whitespace from string inputs before validation.
-     */
-    protected function prepareForValidation(): void
-    {
-        $this->merge([
-            'title' => strip_tags(trim((string) $this->title)),
-            'description' => strip_tags(trim((string) $this->description)),
-            'options' => array_map(fn ($o): string => strip_tags(trim((string) $o)), $this->options ?? []),
-        ]);
-    }
-
-    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, ValidationRule|array<mixed>|string>
