@@ -4,6 +4,8 @@ namespace App\DTOs;
 
 class CreatePollDTO
 {
+    public readonly int $userId;
+
     public readonly string $title;
 
     public readonly ?string $description;
@@ -14,12 +16,14 @@ class CreatePollDTO
      * @param  string[]  $options
      */
     public function __construct(
+        int $userId,
         string $title,
         ?string $description,
         array $options
     ) {
-        $this->title = strip_tags(trim($title));
-        $this->description = $description ? strip_tags(trim($description)) : null;
-        $this->options = array_map(fn (string $o): string => strip_tags(trim($o)), $options);
+        $this->userId = $userId;
+        $this->title = $title;
+        $this->description = $description;
+        $this->options = $options;
     }
 }

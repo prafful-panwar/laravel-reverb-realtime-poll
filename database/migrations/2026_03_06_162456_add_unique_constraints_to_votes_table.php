@@ -6,28 +6,22 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::table('votes', function (Blueprint $table) {
-            // Prevent authenticated users from voting multiple times concurrently
+            // Prevent authenticated users from voting twice on the same poll
             $table->unique(['poll_id', 'user_id'], 'votes_poll_user_unique');
 
-            // Prevent guest users from voting multiple times concurrently from the same IP
-            $table->unique(['poll_id', 'ip_address'], 'votes_poll_ip_unique');
+            // Guest IP dedup: user_id IS NULL rows are constrained; authenticated users differ by user_id
+            $table->unique(['poll_id', 'ip_address', 'user_id'], 'votes_poll_ip_user_unique');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::table('votes', function (Blueprint $table) {
             $table->dropUnique('votes_poll_user_unique');
-            $table->dropUnique('votes_poll_ip_unique');
+            $table->dropUnique('votes_poll_ip_user_unique');
         });
     }
 };

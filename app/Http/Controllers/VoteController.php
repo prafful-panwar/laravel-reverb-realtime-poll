@@ -20,20 +20,10 @@ class VoteController extends Controller
     {
         $option = $this->pollRepository->findOption($poll, $optionId);
 
-        if (! $request->user() && $request->cookie("has_voted_{$poll->id}")) {
-            return back()->withErrors(['vote' => 'You have already voted on this poll.']);
-        }
-
         try {
             $this->voteService->submitVote($request->toDTO($poll, $option));
 
-            $response = back()->with('success', 'Vote recorded successfully!');
-
-            if (! $request->user()) {
-                $response->cookie("has_voted_{$poll->id}", true, 60 * 24 * 365 * 5);
-            }
-
-            return $response;
+            return back()->with('success', 'Vote recorded successfully!');
         } catch (ValidationException $e) {
             return back()->withErrors($e->errors());
         }

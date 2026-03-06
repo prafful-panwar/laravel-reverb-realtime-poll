@@ -39,6 +39,43 @@ class PollRepository implements PollRepositoryInterface
         );
     }
 
+    public function findWithResults(Poll $poll): Poll
+    {
+        return Cache::remember(
+            "poll_{$poll->slug}",
+            now()->addSeconds(30),
+            fn (): Poll => $poll->load([
+                'options' => function (Relation $query): void {
+                    $query->withCount('votes');
+                },
+            ])
+        );
+    }
+
+    public function incrementCachedOptionVoteCount(Poll $poll, PollOption $option, int $delta = 1): void
+    {
+        $cacheKey = "poll_{$poll->slug}";
+
+        if (! Cache::has($cacheKey)) {
+            return;
+        }
+
+        /** @var Poll|null $cachedPoll */
+        $cachedPoll = Cache::get($cacheKey);
+
+        if (! $cachedPoll instanceof Poll) {
+            return;
+        }
+
+        $cachedOption = $cachedPoll->options->firstWhere('id', $option->id);
+
+        if ($cachedOption) {
+            $cachedOption->votes_count = ($cachedOption->votes_count ?? 0) + $delta;
+        }
+
+        Cache::put($cacheKey, $cachedPoll, now()->addSeconds(30));
+    }
+
     public function findOption(Poll $poll, int $optionId): PollOption
     {
         /** @var PollOption $option */

@@ -17,6 +17,21 @@ class StorePollRequest extends FormRequest
     }
 
     /**
+     * Sanitize inputs before validation runs so rules see the final cleaned values.
+     */
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'title' => strip_tags(trim((string) $this->title)),
+            'description' => strip_tags(trim((string) $this->description)),
+            'options' => array_map(
+                fn (mixed $o): string => strip_tags(trim((string) $o)),
+                $this->options ?? []
+            ),
+        ]);
+    }
+
+    /**
      * Get the validation rules that apply to the request.
      *
      * @return array<string, ValidationRule|array<mixed>|string>
@@ -34,6 +49,7 @@ class StorePollRequest extends FormRequest
     public function toDTO(): CreatePollDTO
     {
         return new CreatePollDTO(
+            userId: (int) auth()->id(),
             title: $this->validated('title'),
             description: $this->validated('description'),
             options: $this->validated('options')

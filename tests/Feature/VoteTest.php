@@ -6,6 +6,7 @@ use App\Models\Poll;
 use App\Models\PollOption;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 class VoteTest extends TestCase
@@ -29,26 +30,22 @@ class VoteTest extends TestCase
         ]);
     }
 
-    public function test_a_guest_cannot_vote_twice_on_the_same_browser(): void
+    public function test_a_guest_cannot_vote_twice_from_the_same_ip(): void
     {
         $poll = Poll::factory()->create();
         $option = PollOption::factory()->create(['poll_id' => $poll->id]);
 
-        // First Vote from a pristine browser
+        // First vote from a guest IP
         $response1 = $this->post(route('polls.vote', [$poll, $option]), [
             'option_id' => $option->id,
         ]);
-
         $response1->assertSessionHas('success');
         $this->assertEquals(1, $option->fresh()->votes_count);
-        $response1->assertCookie("has_voted_{$poll->id}", true);
 
-        // Second Vote Attempt from the same browser (presenting the cookie)
-        $response2 = $this->withCookie("has_voted_{$poll->id}", true)
-            ->post(route('polls.vote', [$poll, $option]), [
-                'option_id' => $option->id,
-            ]);
-
+        // Second vote attempt from the same IP — blocked by VoteService + DB constraint
+        $response2 = $this->post(route('polls.vote', [$poll, $option]), [
+            'option_id' => $option->id,
+        ]);
         $response2->assertSessionHasErrors('vote');
         $this->assertEquals(1, $option->fresh()->votes_count);
     }
@@ -59,13 +56,13 @@ class VoteTest extends TestCase
         $poll = Poll::factory()->create();
         $option = PollOption::factory()->create(['poll_id' => $poll->id]);
 
-        // First Vote
+        // First vote
         $this->actingAs($user)
             ->post(route('polls.vote', [$poll, $option]), [
                 'option_id' => $option->id,
             ]);
 
-        // Second Vote Attempt
+        // Second vote attempt — blocked by VoteService + DB unique constraint
         $response = $this->actingAs($user)
             ->post(route('polls.vote', [$poll, $option]), [
                 'option_id' => $option->id,
@@ -73,5 +70,27 @@ class VoteTest extends TestCase
 
         $response->assertSessionHasErrors('vote');
         $this->assertEquals(1, $option->fresh()->votes_count);
+    }
+
+    public function test_vote_updates_cached_poll_option_vote_count_if_cached(): void
+    {
+        // Ensure our cache driver supports locks; database cache store is used for the test.
+        config(['cache.default' => 'database']);
+
+        $poll = Poll::factory()->create();
+        $option = PollOption::factory()->create(['poll_id' => $poll->id]);
+
+        // Prime the cache with the poll + option payload.
+        $cacheKey = "poll_{$poll->slug}";
+        Cache::store('database')->put($cacheKey, $poll->load(['options' => fn ($q) => $q->withCount('votes')]), now()->addSeconds(30));
+
+        $this->post(route('polls.vote', [$poll, $option]), [
+            'option_id' => $option->id,
+        ]);
+
+        $cachedPoll = Cache::store('database')->get($cacheKey);
+
+        $this->assertNotNull($cachedPoll);
+        $this->assertEquals(1, $cachedPoll->options->firstWhere('id', $option->id)->votes_count);
     }
 }

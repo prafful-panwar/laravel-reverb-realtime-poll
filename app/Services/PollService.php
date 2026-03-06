@@ -20,7 +20,7 @@ class PollService
     {
         return DB::transaction(function () use ($dto): Poll {
             $poll = $this->pollRepository->create([
-                'user_id' => auth()->id(),
+                'user_id' => $dto->userId,
                 'title' => $dto->title,
                 'description' => $dto->description,
                 // Slug is auto-generated in the model boot method

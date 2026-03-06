@@ -24,6 +24,16 @@ interface PollRepositoryInterface
     public function findOption(Poll $poll, int $optionId): PollOption;
 
     /**
+     * Load a poll with its options and vote counts, served from cache.
+     */
+    public function findWithResults(Poll $poll): Poll;
+
+    /**
+     * Increment the cached vote count for an option, if the poll is already cached.
+     */
+    public function incrementCachedOptionVoteCount(Poll $poll, PollOption $option, int $delta = 1): void;
+
+    /**
      * Create a new poll.
      */
     public function create(array $data): Poll;
